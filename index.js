@@ -64,12 +64,26 @@ var runCommands = function(fileName){
 	});
 }
 
-connection.on('fileUploaded', function(data) {
-	console.log('Image Found');
-	fs.writeFile(data.filename, data.buffer, function(err) {
-		if(err) throw err;
+// connection.on('fileUploaded', function(data) {
+// 	console.log('Image Found');
+// 	fs.writeFile(data.filename, data.buffer, function(err) {
+// 		if(err) throw err;
 		
-		fileName = data.filename;
-		runCommands(fileName);
-	});
-});
+// 		fileName = data.filename;
+// 	});
+// });
+
+var imageReq = function() {
+ connection.emit('imageReq', {}, function(data){
+ 	console.log('Image Found');
+	 	fs.writeFile(data.fileName, data.buffer, function(err) {
+			if(err) throw err;
+			
+			fileName = data.fileName;
+			runCommands(fileName);
+		});
+ 	});
+};
+
+
+setInterval( imageReq, 50000 );
