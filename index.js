@@ -4,86 +4,126 @@ var client = require("socket.io-client"),
 	exec = require("child_process").exec;
 
 
-var connection = client.connect("http://192.168.1.39:9000");
+var connection = client.connect("http://ramiel.herokuapp.com");
 
-var ildProject;
+var ildProject = null;
+var timeouts = [];
 var fileName;
 var oldfileName;
 
+//clean up all old images
+
+exec("rm *.bmp *.bmp.ild *.svg *.png *.jpg *.jpeg", function() {
+	console.log("old file deleted");
+});
+
 var runCommands = function(fileName){
 
-
-	if(fileName.slice(-5) === ".jpeg") {
-		var withoutFileType = fileName.slice(0, -5);
-		console.log("jpeg");
-	} else {
-		var withoutFileType = fileName.slice(0, -4);
-	}
-
-	var bmp = withoutFileType + ".bmp",
-		svg = withoutFileType + ".svg",
-		bmpIld = withoutFileType + ".bmp.ild";
+	var bmp = fileName + ".bmp",
+		svg = fileName + ".svg",
+		ild = fileName + ".ild";
 
 	//Check if there's already a projection running.
-	if(typeof ildProject !== 'undefined') {
+	if(ildProject !== null) {
 		// Kill last projection
-		ildProject.kill();
-		console.log("killed");
+		ildProject.kill('SIGKILL');
+		//this works but delaying until playilda is ready
+		exec("killall playilda");
+		ildProject = null;
+		console.log("killed last projection");
 		// Delete last projection's file.
-		exec("rm "+ oldfileName + ".bmp " + oldfileName + ".bmp.ild " + oldfileName + ".svg", function() {
-			console.log("old file deleted");
-		});
+		try{
+			fs.unlinkSync(oldfileName+".bmp");
+			fs.unlinkSync(oldfileName+".svg");
+			fs.unlinkSync(oldfileName+".ild");
+			fs.unlinkSync(oldfileName+".bmp.ild");
+		}catch(e){
+			console.log(e);
+		}
 	};
 
-	oldfileName = withoutFileType;
-
-	console.log(withoutFileType);
+	oldfileName = fileName;
 
 	var convertExec = "convert " + fileName + " -contrast -contrast -colorspace Gray -negate -edge 1 -negate "+ bmp;
-	console.log(convertExec);
+	console.log("Finished conversion:" + convertExec);
 
-	exec(convertExec, function() {
-		console.log("Finished conversion...");
-		var vectorExec = "potrace " + bmp + " -o" + svg;
+	exec(convertExec, function(err, data) {
+		console.log("Finished conversion: "+ convertExec);
+		var vectorExec = "potrace " + bmp + " -s -o " + svg;
 		
-		exec(vectorExec, function() {
-			console.log("Finished vectorize...");
-			var bmpExec = "convert " + svg + " " + bmp;
+		exec(vectorExec, function(err, data) {
+			console.log("Finished potracing: "+ vectorExec);
 
-			exec(bmpExec, function() {
-				console.log("Finished bmp convert...");
-				var ildExec = "wine 'C:/Program Files (x86)/AutoHotkey/AutoHotkey.exe' convert2bmp.ahk";
 
-				exec(ildExec, function() {
-					console.log("Finished ild convert. Running...");
-					var playExec = "playilda "+ bmpIld;
-					ildProject = exec(playExec);
-				});
+			var svgExec = "python svg2ild.py " + svg + " " + ild;
+
+			exec(svgExec, function(err, data) {
+				if(err) {
+					setTimeout(imageReq, 0);
+					console.log("error", err);
+				} else {
+				console.log("Finished svg convert: "+ svgExec);
+				var playExec = "playilda "+ ild + " 40000";
+				ildProject = exec(playExec);
+				}
+				
+				// var process = exec(ildExec, function(err, data) {
+				// 	console.log("Finished running: "+ildExec)
+				// 	if(err) {
+				// 		setTimeout(imageReq, 0);
+				// 		console.log("error", err);
+				// 	} else {
+				// 		wasSuccessful = true;
+				// 		console.log("Finished ild convert. Running...");
+				// 		var playExec = "playilda "+ bmpIld + " 20000";
+				// 		ildProject = exec(playExec);
+				// 	}
+				// });
+
+				// var killProcess = function() {
+				// 	console.log("value of wasSuccessful:", wasSuccessful);
+				// 	if(!wasSuccessful) { 
+
+				// 		exec("ps -efa | grep wine | awk '{print $2}' | xargs kill -9", function(err, data) {
+				// 			console.log("killed the stalled process");
+				// 			try{
+				// 				fs.unlinkSync(withoutFileType+".bmp");
+				// 				fs.unlinkSync(withoutFileType+".svg");
+				// 				fs.unlinkSync(fileName);
+				// 			}catch(e){ console.log(e); }
+				// 		});
+				// 		setTimeout(imageReq, 0);
+				// 	}	
+
+				// };
+
+				// timeouts.push(setTimeout(killProcess, 20000));
+				timeouts.push(setTimeout(imageReq, 50000));
 			});
 		});
 	});
 }
 
-// connection.on('fileUploaded', function(data) {
-// 	console.log('Image Found');
-// 	fs.writeFile(data.filename, data.buffer, function(err) {
-// 		if(err) throw err;
-		
-// 		fileName = data.filename;
-// 	});
-// });
 
 var imageReq = function() {
+ clearAllTimeouts();
  connection.emit('imageReq', {}, function(data){
- 	console.log('Image Found');
-	 	fs.writeFile(data.fileName, data.buffer, function(err) {
-			if(err) throw err;
-			
-			fileName = data.fileName;
-			runCommands(fileName);
-		});
+ 	console.log('Image Found: '+data.fileName);
+ 		if(data.fileName){
+		 	fs.writeFile(data.fileName, data.buffer, function(err) {
+				if(err) throw err;
+				
+				fileName = data.fileName;
+				runCommands(fileName);
+			});
+		 }else{
+		 	setTimeout(imageReq, 10000);
+		 }
  	});
 };
 
+clearAllTimeouts = function(){
+	timeouts.forEach(clearTimeout);
+}
 
-setInterval( imageReq, 50000 );
+imageReq();
