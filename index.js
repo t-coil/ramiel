@@ -1,6 +1,8 @@
 var client = require("socket.io-client"),
 	fs = require("fs"),
 	sys = require("sys"),
+	mmm = require("mmmagic"),
+	Magic = mmm.Magic,
 	exec = require("child_process").exec;
 
 
@@ -36,7 +38,6 @@ var runCommands = function(fileName){
 			fs.unlinkSync(oldfileName+".bmp");
 			fs.unlinkSync(oldfileName+".svg");
 			fs.unlinkSync(oldfileName+".ild");
-			fs.unlinkSync(oldfileName+".bmp.ild");
 		}catch(e){
 			console.log(e);
 		}
@@ -54,7 +55,6 @@ var runCommands = function(fileName){
 		exec(vectorExec, function(err, data) {
 			console.log("Finished potracing: "+ vectorExec);
 
-
 			var svgExec = "python svg2ild.py " + svg + " " + ild;
 
 			exec(svgExec, function(err, data) {
@@ -62,42 +62,11 @@ var runCommands = function(fileName){
 					setTimeout(imageReq, 0);
 					console.log("error", err);
 				} else {
-				console.log("Finished svg convert: "+ svgExec);
-				var playExec = "playilda "+ ild + " 40000";
-				ildProject = exec(playExec);
+					console.log("Finished svg convert: "+ svgExec);
+					var playExec = "playilda "+ ild + " 40000";
+					ildProject = exec(playExec);
 				}
 				
-				// var process = exec(ildExec, function(err, data) {
-				// 	console.log("Finished running: "+ildExec)
-				// 	if(err) {
-				// 		setTimeout(imageReq, 0);
-				// 		console.log("error", err);
-				// 	} else {
-				// 		wasSuccessful = true;
-				// 		console.log("Finished ild convert. Running...");
-				// 		var playExec = "playilda "+ bmpIld + " 20000";
-				// 		ildProject = exec(playExec);
-				// 	}
-				// });
-
-				// var killProcess = function() {
-				// 	console.log("value of wasSuccessful:", wasSuccessful);
-				// 	if(!wasSuccessful) { 
-
-				// 		exec("ps -efa | grep wine | awk '{print $2}' | xargs kill -9", function(err, data) {
-				// 			console.log("killed the stalled process");
-				// 			try{
-				// 				fs.unlinkSync(withoutFileType+".bmp");
-				// 				fs.unlinkSync(withoutFileType+".svg");
-				// 				fs.unlinkSync(fileName);
-				// 			}catch(e){ console.log(e); }
-				// 		});
-				// 		setTimeout(imageReq, 0);
-				// 	}	
-
-				// };
-
-				// timeouts.push(setTimeout(killProcess, 20000));
 				timeouts.push(setTimeout(imageReq, 50000));
 			});
 		});
@@ -112,9 +81,23 @@ var imageReq = function() {
  		if(data.fileName){
 		 	fs.writeFile(data.fileName, data.buffer, function(err) {
 				if(err) throw err;
-				
+
 				fileName = data.fileName;
-				runCommands(fileName);
+
+				var magic = new Magic(mmm.MAGIC_MIME_TYPE);
+
+				var fileType = magic.detectFile(fileName, function(err, result) {
+					if (err) throw err;
+
+					console.log(result);
+
+					if (result === "image/gif") {
+						setTimeout(imageReq, 10);
+						console.log("IT'S A GIF, HIT THE DECK")
+					} else {
+						runCommands(fileName);
+					}
+				});
 			});
 		 }else{
 		 	setTimeout(imageReq, 10000);
